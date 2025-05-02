@@ -1,7 +1,13 @@
 #!/bin/bash
-
-# Script to configure DHCP on a new Proxmox host
-# Place in /usr/local/bin/configure-proxmox-dhcp.sh
+# ===============================================================================
+# Proxmox DHCP Configuration Script
+# ===============================================================================
+# Description: Automatically configures a Proxmox host to use DHCP instead of
+#              static IP addressing and updates /etc/hosts accordingly.
+# Author: Your Name
+# GitHub: https://github.com/yourusername/proxmox-scripts
+# License: MIT
+# ===============================================================================
 
 # Get the hostname
 HOSTNAME=$(hostname)

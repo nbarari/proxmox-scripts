@@ -105,9 +105,3 @@ If you encounter any issues:
    ```bash
    systemctl status pve-cluster pvedaemon pveproxy pvestatd
    ```
-
-## License
-MIT License
-
-## Author
-nbarari

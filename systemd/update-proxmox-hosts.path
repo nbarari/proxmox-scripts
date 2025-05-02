@@ -1,0 +1,8 @@
+[Unit]
+Description=Watch for network changes to update Proxmox hosts file
+
+[Path]
+PathChanged=/sys/class/net/vmbr0/carrier
+
+[Install]
+WantedBy=multi-user.target

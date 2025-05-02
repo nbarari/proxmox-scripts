@@ -17,9 +17,33 @@ PRIMARY_IFACE="eno1"
 
 echo "Using Ethernet interface: $PRIMARY_IFACE"
 
+# Verify the interface exists
+if ! ip link show $PRIMARY_IFACE >/dev/null 2>&1; then
+    echo "Error: Interface $PRIMARY_IFACE does not exist on this system"
+    echo "Available interfaces:"
+    ip -o link show | grep -v 'lo\|vmbr\|tap' | awk -F': ' '{print $2}'
+    exit 1
+fi
+
 # Check if /etc/network/interfaces already has DHCP configured
 if grep -q "iface vmbr0 inet dhcp" /etc/network/interfaces; then
     echo "DHCP is already configured for vmbr0"
+    
+    # Check if the correct interface is being used
+    if ! grep -q "bridge-ports $PRIMARY_IFACE" /etc/network/interfaces; then
+        echo "Warning: vmbr0 is not using $PRIMARY_IFACE as bridge port"
+        echo "Current configuration:"
+        grep -A 3 "iface vmbr0" /etc/network/interfaces
+        
+        # Ask for confirmation before modifying
+        echo "Do you want to update the bridge port to use $PRIMARY_IFACE? (y/n)"
+        read -r confirm
+        if [[ $confirm =~ ^[Yy]$ ]]; then
+            # Update the bridge port
+            sed -i "/iface vmbr0/,/bridge-fd/{s/bridge-ports.*/bridge-ports $PRIMARY_IFACE/}" /etc/network/interfaces
+            echo "Bridge port updated to use $PRIMARY_IFACE"
+        fi
+    fi
 else
     echo "Configuring DHCP for vmbr0 using physical interface $PRIMARY_IFACE"
     

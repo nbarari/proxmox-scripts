@@ -4,28 +4,18 @@
 # ===============================================================================
 # Description: Automatically configures a Proxmox host to use DHCP instead of
 #              static IP addressing and updates /etc/hosts accordingly.
-# Author: Your Name
-# GitHub: https://github.com/yourusername/proxmox-scripts
-# License: MIT
+#              This version specifically uses the eno1 interface.
+# Author: nbarari
+# GitHub: https://github.com/nbarari/proxmox-scripts
 # ===============================================================================
 
 # Get the hostname
 HOSTNAME=$(hostname)
 
-# Find primary physical network interface (excluding lo, vmbr, and tap interfaces)
-PRIMARY_IFACE=$(ip -o link show | grep -v 'lo\|vmbr\|tap' | grep 'state UP' | awk -F': ' '{print $2}' | head -n1)
+# Explicitly set the primary interface to eno1
+PRIMARY_IFACE="eno1"
 
-if [ -z "$PRIMARY_IFACE" ]; then
-    # If no UP interface, take the first non-lo interface
-    PRIMARY_IFACE=$(ip -o link show | grep -v 'lo\|vmbr\|tap' | awk -F': ' '{print $2}' | head -n1)
-fi
-
-if [ -z "$PRIMARY_IFACE" ]; then
-    echo "Error: Could not detect primary network interface"
-    exit 1
-fi
-
-echo "Detected primary interface: $PRIMARY_IFACE"
+echo "Using Ethernet interface: $PRIMARY_IFACE"
 
 # Check if /etc/network/interfaces already has DHCP configured
 if grep -q "iface vmbr0 inet dhcp" /etc/network/interfaces; then

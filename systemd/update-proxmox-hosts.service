@@ -1,0 +1,10 @@
+[Unit]
+Description=Update /etc/hosts with current IP for Proxmox
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/update-proxmox-hosts.sh
+
+[Install]
+WantedBy=multi-user.target

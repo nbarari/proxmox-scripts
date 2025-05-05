@@ -9,37 +9,47 @@
 # GitHub: https://github.com/nbarari/proxmox-scripts
 # ===============================================================================
 
+# Warn if running over SSH
+if [ -n "$SSH_CONNECTION" ]; then
+    echo "WARNING: You are running this script over SSH."
+    echo "Changing network configuration may disconnect your SSH session."
+    echo "Proceed with caution. Consider running from console or having out-of-band access."
+    echo
+fi
+
 # Get the hostname
 HOSTNAME=$(hostname)
 
-# Detect all network interfaces with IP addresses (including vmbr0)
-AVAILABLE_IFACES=$(ip -o -4 addr show | awk '{print $2}' | grep -v 'lo' | sort -u)
+# Detect all physical network interfaces (exclude lo and vmbr*)
+AVAILABLE_IFACES=$(ip -o -4 addr show | awk '{print $2}' | grep -vE 'lo|vmbr[0-9]+' | sort -u)
 
-if [ -z "$AVAILABLE_IFACES" ]; then
-    echo "Error: No active network interfaces detected."
-    exit 1
-fi
-
-echo "Detected network interfaces with IP addresses:"
-echo "$AVAILABLE_IFACES"
-
-# If multiple interfaces are detected, ask the user to choose or use all
 if [ $(echo "$AVAILABLE_IFACES" | wc -l) -gt 1 ]; then
-    echo "Multiple interfaces detected. Do you want to configure all for DHCP? (y/n)"
-    read -r configure_all
-    if [[ $configure_all =~ ^[Yy]$ ]]; then
+    echo "Multiple interfaces detected:"
+    echo "$AVAILABLE_IFACES"
+    echo "Would you like to bond these interfaces for redundancy/performance? (y/n)"
+    read -r use_bond
+    if [[ $use_bond =~ ^[Yy]$ ]]; then
         SELECTED_IFACES="$AVAILABLE_IFACES"
+        BONDING_ENABLED=true
     else
-        echo "Please select an interface to configure for DHCP:"
-        select iface in $AVAILABLE_IFACES; do
-            if [ -n "$iface" ]; then
-                SELECTED_IFACES="$iface"
-                break
-            fi
-        done
+        echo "Do you want to configure all interfaces for DHCP? (y/n)"
+        read -r configure_all
+        if [[ $configure_all =~ ^[Yy]$ ]]; then
+            SELECTED_IFACES="$AVAILABLE_IFACES"
+        else
+            echo "Please select an interface to configure for DHCP:"
+            select iface in $AVAILABLE_IFACES; do
+                if [ -n "$iface" ]; then
+                    SELECTED_IFACES="$iface"
+                    break
+                fi
+            done
+        fi
+        BONDING_ENABLED=false
     fi
 else
     SELECTED_IFACES="$AVAILABLE_IFACES"
+    BONDING_ENABLED=false
 fi
 
 echo "Selected interfaces for DHCP configuration: $SELECTED_IFACES"
@@ -47,37 +57,56 @@ echo "Selected interfaces for DHCP configuration: $SELECTED_IFACES"
 # Backup the current interfaces file
 cp /etc/network/interfaces /etc/network/interfaces.backup.$(date +%Y%m%d%H%M%S)
 
-# Generate a new interfaces file with DHCP configuration for selected interfaces
+# Generate a new interfaces file with DHCP configuration
+if [ "$BONDING_ENABLED" = true ]; then
 cat > /etc/network/interfaces << EOF
 auto lo
 iface lo inet loopback
 
-EOF
+auto bond0
+iface bond0 inet manual
+    bond-slaves $SELECTED_IFACES
+    bond-miimon 100
+    bond-mode 802.3ad
 
-for iface in $SELECTED_IFACES; do
-    cat >> /etc/network/interfaces << EOF
-auto $iface
-iface $iface inet manual
-
-EOF
-done
-
-cat >> /etc/network/interfaces << EOF
 auto vmbr0
 iface vmbr0 inet dhcp
-        bridge-ports $SELECTED_IFACES
-        bridge-stp off
-        bridge-fd 0
+    bridge-ports bond0
+    bridge-stp off
+    bridge-fd 0
 
 source /etc/network/interfaces.d/*
 EOF
+else
+cat > /etc/network/interfaces << EOF
+auto lo
+iface lo inet loopback
+
+auto vmbr0
+iface vmbr0 inet dhcp
+    bridge-ports $SELECTED_IFACES
+    bridge-stp off
+    bridge-fd 0
+
+source /etc/network/interfaces.d/*
+EOF
+fi
 
 echo "Updated /etc/network/interfaces with DHCP configuration for: $SELECTED_IFACES"
 
-# Update /etc/hosts with the current IP
-CURRENT_IP=$(ip -4 addr show vmbr0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+# Wait for DHCP lease on vmbr0 (up to 30 seconds)
+echo "Waiting for DHCP lease on vmbr0..."
+for i in {1..30}; do
+    CURRENT_IP=$(ip -4 addr show vmbr0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
+    if [ -n "$CURRENT_IP" ]; then
+        echo "DHCP lease obtained: $CURRENT_IP"
+        break
+    fi
+    sleep 1
+done
 
 if [ -z "$CURRENT_IP" ]; then
+    echo "Timeout waiting for DHCP lease on vmbr0."
     # If vmbr0 doesn't have an IP yet, try to get it from the first selected interface
     CURRENT_IP=$(ip -4 addr show $(echo "$SELECTED_IFACES" | awk '{print $1}') | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
 fi
@@ -96,6 +125,7 @@ else
     echo "Warning: Could not detect an IP address to use in /etc/hosts"
 fi
 
+echo
 echo "DHCP configuration complete."
 echo "You may need to restart networking or reboot for changes to take effect."
 echo "After restart, run the following command to verify DHCP is working:"

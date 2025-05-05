@@ -23,6 +23,15 @@ HOSTNAME=$(hostname)
 # Detect all physical network interfaces (exclude lo and vmbr*)
 AVAILABLE_IFACES=$(ip -o -4 addr show | awk '{print $2}' | grep -vE 'lo|vmbr[0-9]+' | sort -u)
 
+# 1. Check if AVAILABLE_IFACES is empty
+if [ -z "$AVAILABLE_IFACES" ]; then
+    echo "ERROR: No physical network interfaces detected. Exiting."
+    exit 1
+fi
+
+# 2. Print AVAILABLE_IFACES for debugging
+echo "DEBUG: AVAILABLE_IFACES='$AVAILABLE_IFACES'"
+
 if [ $(echo "$AVAILABLE_IFACES" | wc -l) -gt 1 ]; then
     echo "Multiple interfaces detected:"
     echo "$AVAILABLE_IFACES"
@@ -50,6 +59,12 @@ if [ $(echo "$AVAILABLE_IFACES" | wc -l) -gt 1 ]; then
 else
     SELECTED_IFACES="$AVAILABLE_IFACES"
     BONDING_ENABLED=false
+fi
+
+# 3. Ensure the selection logic always sets SELECTED_IFACES
+if [ -z "$SELECTED_IFACES" ]; then
+    echo "No interface selected. Defaulting to all available interfaces: $AVAILABLE_IFACES"
+    SELECTED_IFACES="$AVAILABLE_IFACES"
 fi
 
 echo "Selected interfaces for DHCP configuration: $SELECTED_IFACES"

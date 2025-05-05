@@ -12,8 +12,8 @@
 # Get the hostname
 HOSTNAME=$(hostname)
 
-# Detect all physical network interfaces with IP addresses
-AVAILABLE_IFACES=$(ip -o -4 addr show | awk '{print $2}' | grep -v 'lo\|vmbr\|tap' | sort -u)
+# Detect all network interfaces with IP addresses (including vmbr0)
+AVAILABLE_IFACES=$(ip -o -4 addr show | awk '{print $2}' | grep -v 'lo' | sort -u)
 
 if [ -z "$AVAILABLE_IFACES" ]; then
     echo "Error: No active network interfaces detected."

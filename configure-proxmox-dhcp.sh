@@ -705,7 +705,7 @@ else
             fi
             
             # Check for duplicate entries
-            local RESOLV_TMP=$(mktemp)
+            RESOLV_TMP=$(mktemp)
             sort -u /etc/resolv.conf > "$RESOLV_TMP"
             if ! cmp -s "$RESOLV_TMP" /etc/resolv.conf; then
                 warning "Duplicate entries found in /etc/resolv.conf, fixing..."

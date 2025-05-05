@@ -109,30 +109,34 @@ get_default_interface() {
 
 # Function to select bond mode
 select_bond_mode() {
-    echo
-    info "Select bonding mode:"
-    echo " 1) active-backup (mode 1) - Fault tolerance (Recommended default)"
-    echo " 2) 802.3ad (mode 4)      - LACP (Requires switch configuration)"
-    echo " 3) balance-alb (mode 6)   - Adaptive load balancing (No switch config needed)"
-    echo " 4) balance-tlb (mode 5)   - Adaptive transmit load balancing"
-    echo " 5) balance-xor (mode 2)   - Static load balancing (Needs switch config sometimes)"
-    echo
+    # Send informational output to stderr (>&2)
+    echo >&2
+    info "Select bonding mode:" >&2
+    echo " 1) active-backup (mode 1) - Fault tolerance (Recommended default)" >&2
+    echo " 2) 802.3ad (mode 4)      - LACP (Requires switch configuration)" >&2
+    echo " 3) balance-alb (mode 6)   - Adaptive load balancing (No switch config needed)" >&2
+    echo " 4) balance-tlb (mode 5)   - Adaptive transmit load balancing" >&2
+    echo " 5) balance-xor (mode 2)   - Static load balancing (Needs switch config sometimes)" >&2
+    echo >&2
+
     local choice
     while true; do
+        # read prompt goes to stderr automatically
         read -p "Enter choice [1-5, default 1]: " choice
         choice=${choice:-1} # Default to 1 if empty
         case $choice in
+            # ONLY echo the final result to stdout
             1) echo "active-backup"; return 0 ;;
             2) echo "802.3ad"; return 0 ;;
             3) echo "balance-alb"; return 0 ;;
             4) echo "balance-tlb"; return 0 ;;
             5) echo "balance-xor"; return 0 ;;
-            *) error "Invalid choice. Please select 1-5." ;;
+            # Send errors to stderr
+            *) error "Invalid choice. Please select 1-5." >&2 ;;
         esac
     done
 }
 
-# Function to select interfaces for bonding
 # Function to select interfaces for bonding
 select_bond_interfaces() {
     local available_ifaces=($@) # Pass available interfaces as arguments

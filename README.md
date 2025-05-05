@@ -109,7 +109,7 @@ wget -O /etc/systemd/system/update-proxmox-hosts.path https://raw.githubusercont
 
 1. Run the configuration script:
    ```bash
-   sudo /usr/local/bin/configure-proxmox-dhcp.sh
+   /usr/local/bin/configure-proxmox-dhcp.sh
    ```
 
    - If multiple NICs are detected, you will be prompted to bond them or select which to use.

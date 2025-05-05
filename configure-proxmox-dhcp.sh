@@ -721,3 +721,16 @@ else
     info "Backup of previous config: $BACKUP_FILE"
     info "To restore: cp $BACKUP_FILE /etc/network/interfaces && ifreload -a"
 fi
+
+echo
+info "Useful commands to verify:"
+echo "  ip addr show vmbr0"
+echo "  ip route"
+if $IPV6_ENABLED; then
+    echo "  ip -6 addr show vmbr0 scope global"
+    echo "  ip -6 route"
+fi
+echo "  cat /etc/resolv.conf"
+echo "  cat /etc/hosts"
+
+exit $($NETWORK_APPLY_SUCCESS || echo 1) # Exit 0 on success, 1 on failure (in non-dry-run)

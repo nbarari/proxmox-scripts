@@ -2,6 +2,27 @@
 
 A collection of scripts to configure and maintain Proxmox VE hosts using DHCP networking, with support for advanced features like bonding, IPv6, and static fallback.
 
+## Table of Contents
+
+*   [Overview](#overview)
+*   [Scripts](#scripts)
+    *   [`proxmox-dhcp.sh` (DHCP Configuration)](#proxmox-dhcpsh-dhcp-configuration)
+    *   [`update-proxmox-hosts.sh` (Hosts File Updater)](#update-proxmox-hostssh-hosts-file-updater)
+*   [Example `/etc/network/interfaces` Configurations](#example-etcnetworkinterfaces-configurations)
+    *   [Example 1: Bonded Interfaces (active-backup mode)](#example-1-bonded-interfaces-active-backup-mode)
+    *   [Example 2: Single Interface (non-bonded)](#example-2-single-interface-non-bonded)
+*   [Installation](#installation)
+    *   [Method 1: Clone the Repository](#method-1-clone-the-repository)
+    *   [Method 2: Manual Download](#method-2-manual-download)
+*   [Usage](#usage)
+    *   [First-Time DHCP Configuration](#first-time-dhcp-configuration)
+    *   [Setting Up Automatic Hosts File Updates](#setting-up-automatic-hosts-file-updates)
+        *   [Method 1: Systemd (Recommended)](#method-1-systemd-recommended)
+        *   [Method 2: Cron (Alternative/Supplemental)](#method-2-cron-alternativesupplemental)
+*   [Troubleshooting](#troubleshooting)
+
+---
+
 ## Overview
 
 Using DHCP on a Proxmox host can be convenient, but requires careful setup of the network bridge and ongoing management of the `/etc/hosts` file to ensure Proxmox services function correctly if the IP address changes. These scripts aim to simplify this process:
@@ -59,7 +80,7 @@ This script is designed to run periodically (e.g., via systemd or cron) to ensur
 
 The `proxmox-dhcp.sh` script generates configurations like these:
 
-**Example 1: Bonded Interfaces (active-backup mode)**
+### Example 1: Bonded Interfaces (active-backup mode)
 
 ```ini
 auto lo
@@ -91,7 +112,7 @@ iface vmbr0 inet dhcp
 source /etc/network/interfaces.d/*
 ```
 
-**Example 2: Single Interface (non-bonded)**
+### Example 2: Single Interface (non-bonded)
 
 ```ini
 auto lo
@@ -196,7 +217,7 @@ sudo systemctl daemon-reload
 
 To keep `/etc/hosts` synchronized automatically when the IP changes, use the provided systemd units or set up cron jobs. Systemd is generally recommended.
 
-**Method 1: Systemd (Recommended)**
+#### Method 1: Systemd (Recommended)
 
 The `.path` unit monitors for network changes (specifically, the `vmbr0` interface status), and the `.service` unit runs the `update-proxmox-hosts.sh` script when triggered.
 
@@ -215,7 +236,7 @@ The `.path` unit monitors for network changes (specifically, the `vmbr0` interfa
     systemctl status update-proxmox-hosts.service
     ```
 
-**Method 2: Cron (Alternative/Supplemental)**
+#### Method 2: Cron (Alternative/Supplemental)
 
 This provides purely time-based checks. It can be used alongside systemd or as an alternative if systemd units are not preferred.
 

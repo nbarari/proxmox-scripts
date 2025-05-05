@@ -1,13 +1,12 @@
 #!/bin/bash
 # ===============================================================================
-# Proxmox DHCP Configuration Script (Revised)
+# Proxmox DHCP Configuration Script
 # ===============================================================================
 # Description: Automatically configures a Proxmox host to use DHCP instead of
 #              static IP addressing, supporting bonding, IPv6, and static fallback.
 #              Dynamically detects network interfaces and allows user selection.
 # Original Author: nbarari
 # GitHub: https://github.com/nbarari/proxmox-scripts
-# Revision based on feedback.
 # ===============================================================================
 
 # Exit on error
@@ -443,7 +442,7 @@ apply_network_configuration() {
 
 # Display banner
 echo -e "\n${GREEN}=============================================================${NC}"
-echo -e "${GREEN}        Proxmox DHCP Configuration Script (Revised)      ${NC}"
+echo -e "${GREEN}        Proxmox DHCP Configuration Script      ${NC}"
 echo -e "${GREEN}=============================================================${NC}"
 echo
 

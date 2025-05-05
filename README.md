@@ -70,22 +70,8 @@ This script maintains proper hostname resolution when your IP address changes:
 
 ## Installation
 
-### Method 1: Manual Download
-```bash
-# Download the configuration script
-wget -O /usr/local/bin/configure-proxmox-dhcp.sh https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/configure-proxmox-dhcp.sh
-chmod +x /usr/local/bin/configure-proxmox-dhcp.sh
 
-# Download the hosts updater script
-wget -O /usr/local/bin/update-proxmox-hosts.sh https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/update-proxmox-hosts.sh
-chmod +x /usr/local/bin/update-proxmox-hosts.sh
-
-# Download systemd service files
-wget -O /etc/systemd/system/update-proxmox-hosts.service https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.service
-wget -O /etc/systemd/system/update-proxmox-hosts.path https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.path
-```
-
-### Method 2: Clone the Repository
+### Method 1: Clone the Repository
 ```bash
 # Clone the repository
 git clone https://github.com/nbarari/proxmox-scripts.git
@@ -100,6 +86,21 @@ cp systemd/update-proxmox-hosts.path /etc/systemd/system/
 # Make scripts executable
 chmod +x /usr/local/bin/configure-proxmox-dhcp.sh
 chmod +x /usr/local/bin/update-proxmox-hosts.sh
+```
+
+### Method 2: Manual Download
+```bash
+# Download the configuration script
+wget -O /usr/local/bin/configure-proxmox-dhcp.sh https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/configure-proxmox-dhcp.sh
+chmod +x /usr/local/bin/configure-proxmox-dhcp.sh
+
+# Download the hosts updater script
+wget -O /usr/local/bin/update-proxmox-hosts.sh https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/update-proxmox-hosts.sh
+chmod +x /usr/local/bin/update-proxmox-hosts.sh
+
+# Download systemd service files
+wget -O /etc/systemd/system/update-proxmox-hosts.service https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.service
+wget -O /etc/systemd/system/update-proxmox-hosts.path https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.path
 ```
 
 ## Usage

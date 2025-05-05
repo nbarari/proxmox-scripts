@@ -3,25 +3,73 @@ A collection of scripts to configure and maintain Proxmox VE hosts with DHCP ins
 
 ## Overview
 These scripts solve two common issues when using DHCP with Proxmox:
-1. **Initial Configuration**: Automatically configure Proxmox to use DHCP networking with the correct bridge setup
-2. **IP Address Changes**: Keep the Proxmox web interface and services working correctly when DHCP assigns a new IP address
+1. **Initial Configuration**: Automatically configure Proxmox to use DHCP networking with the correct bridge setup.
+2. **IP Address Changes**: Keep the Proxmox web interface and services working correctly when DHCP assigns a new IP address.
 
 ## Scripts
+
 ### configure-proxmox-dhcp.sh
+
 This script performs initial configuration of a Proxmox host to use DHCP:
-- Automatically detects your primary network interface
-- Creates a proper bridge (vmbr0) configuration using DHCP
-- Updates /etc/hosts with the correct IP address
-- Preserves your existing configuration by creating backups
+
+- **Detects all physical network interfaces** (excluding `lo` and existing bridges).
+- **Prompts to bond multiple NICs** for redundancy/performance (LACP).
+- **Allows selection of all or a single NIC** if not bonding.
+- **Creates a proper bridge (`vmbr0`) configuration using DHCP**.
+- **Waits for a DHCP lease** and updates `/etc/hosts` with the correct IP address.
+- **Preserves your existing configuration** by creating backups.
+
+**Note:**  
+- You must run this script as root.
+- Running over SSH may disconnect your session if the network changes.
+
+#### Example `/etc/network/interfaces` output
+
+**Bonded:**
+```
+auto lo
+iface lo inet loopback
+
+auto bond0
+iface bond0 inet manual
+    bond-slaves enp2s0 enp3s0
+    bond-miimon 100
+    bond-mode 802.3ad
+
+auto vmbr0
+iface vmbr0 inet dhcp
+    bridge-ports bond0
+    bridge-stp off
+    bridge-fd 0
+
+source /etc/network/interfaces.d/*
+```
+
+**Non-bonded:**
+```
+auto lo
+iface lo inet loopback
+
+auto vmbr0
+iface vmbr0 inet dhcp
+    bridge-ports enp2s0
+    bridge-stp off
+    bridge-fd 0
+
+source /etc/network/interfaces.d/*
+```
 
 ### update-proxmox-hosts.sh
+
 This script maintains proper hostname resolution when your IP address changes:
-- Monitors your current IP address on the bridge interface
-- Updates /etc/hosts whenever the IP changes
-- Restarts necessary Proxmox services
-- Prevents duplicate entries in your hosts file
+
+- Monitors your current IP address on the bridge interface.
+- Updates `/etc/hosts` whenever the IP changes.
+- Restarts necessary Proxmox services.
+- Prevents duplicate entries in your hosts file.
 
 ## Installation
+
 ### Method 1: Manual Download
 ```bash
 # Download the configuration script
@@ -55,11 +103,16 @@ chmod +x /usr/local/bin/update-proxmox-hosts.sh
 ```
 
 ## Usage
+
 ### First-Time DHCP Configuration
+
 1. Run the configuration script:
    ```bash
-   /usr/local/bin/configure-proxmox-dhcp.sh
+   sudo /usr/local/bin/configure-proxmox-dhcp.sh
    ```
+
+   - If multiple NICs are detected, you will be prompted to bond them or select which to use.
+   - The script will back up your current `/etc/network/interfaces`, generate a new DHCP-based config, wait for a DHCP lease, and update `/etc/hosts`.
 
 2. Restart networking or reboot:
    ```bash
@@ -74,6 +127,7 @@ chmod +x /usr/local/bin/update-proxmox-hosts.sh
    ```
 
 ### Setting Up Automatic Hosts File Updates
+
 1. Enable and start the systemd services:
    ```bash
    systemctl enable update-proxmox-hosts.path
@@ -89,6 +143,7 @@ chmod +x /usr/local/bin/update-proxmox-hosts.sh
    ```
 
 ## Troubleshooting
+
 If you encounter any issues:
 
 1. Check if the hostname can be resolved:

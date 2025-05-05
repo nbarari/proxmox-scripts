@@ -47,11 +47,12 @@ progress() {
 
 # Execute commands or simulate execution in dry-run mode
 execute() {
-    info "Executing: $*"
     if [ "$DRY_RUN" = "true" ]; then
         info "DRY RUN: Would execute: $*"
         return 0
     else
+        # Only log in debug mode or be quiet for production runs
+        # info "Executing: $*"  # Comment this out to reduce output noise
         "$@"
         local status=$?
         if [ $status -ne 0 ]; then
@@ -398,13 +399,14 @@ apply_network_configuration() {
         fi
     fi
 
-    info "Waiting for DHCPv4 lease on vmbr0 (up to $timeout seconds)..."
+    info "Waiting for DHCPv4 lease on vmbr0 (up to $timeout seconds)..." >&2
     for i in $(seq 1 $timeout); do
-        progress "Waiting for DHCPv4" $timeout $i
+        # Send progress to stderr
+        progress "Waiting for DHCPv4" $timeout $i >&2  
         current_ip=$(ip -4 addr show vmbr0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
         if [ -n "$current_ip" ]; then
-            echo # Clear progress line
-            success "DHCPv4 lease obtained on vmbr0: $current_ip"
+            echo >&2 # Clear progress line (to stderr)
+            success "DHCPv4 lease obtained on vmbr0: $current_ip" >&2
             break
         fi
         sleep 1
@@ -649,15 +651,16 @@ if $NETWORK_APPLY_SUCCESS; then
     # Update /etc/hosts
     FQDN=$(hostname -f 2>/dev/null || echo "$HOSTNAME")
     if [ "$DRY_RUN" != "true" ]; then
-        # Remove old entries more carefully (match IP or hostname at line end)
-        execute sed -i -E "/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+[[:space:]]+.*\b($HOSTNAME|$FQDN)\b[[:space:]]*$/d" /etc/hosts
-        execute sed -i -E "/^::1[[:space:]]+.*\b($HOSTNAME|$FQDN)\b[[:space:]]*$/d" /etc/hosts # Clean IPv6 localhost too just in case
-        execute sed -i "/[[:space:]]$HOSTNAME$/d" /etc/hosts # Simpler removal if FQDN failed
-        # Add new entry
-        if ! echo "$OBTAINED_IP $FQDN $HOSTNAME" >> /etc/hosts; then
-             error "Failed to update /etc/hosts automatically."
-        else
+        # Remove old entries (directly without using execute function)
+        sed -i -E "/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+[[:space:]]+.*\b($HOSTNAME|$FQDN)\b[[:space:]]*$/d" /etc/hosts
+        sed -i -E "/^::1[[:space:]]+.*\b($HOSTNAME|$FQDN)\b[[:space:]]*$/d" /etc/hosts
+        sed -i "/[[:space:]]$HOSTNAME$/d" /etc/hosts
+        
+        # Add new entry (separate command from success message)
+        if echo "$OBTAINED_IP $FQDN $HOSTNAME" >> /etc/hosts; then
              success "Updated /etc/hosts: $OBTAINED_IP $FQDN $HOSTNAME"
+        else
+             error "Failed to update /etc/hosts automatically."
         fi
     else
         info "DRY RUN: Would update /etc/hosts with: $OBTAINED_IP $FQDN $HOSTNAME"
@@ -691,6 +694,26 @@ if [ "$DRY_RUN" = "true" ]; then
 else
     if $NETWORK_APPLY_SUCCESS; then
         success "DHCP configuration process completed."
+        # Check DNS configuration
+        if [ -f /etc/resolv.conf ]; then  # Removed redundant DRY_RUN check
+            info "Checking DNS configuration..."
+            if ! grep -q "nameserver [0-9]" /etc/resolv.conf; then
+                warning "No IPv4 DNS servers found in /etc/resolv.conf"
+                warning "Adding Google DNS (8.8.8.8) as a fallback"
+                echo "nameserver 8.8.8.8" >> /etc/resolv.conf
+                success "Added IPv4 DNS server to /etc/resolv.conf"
+            fi
+            
+            # Check for duplicate entries
+            local RESOLV_TMP=$(mktemp)
+            sort -u /etc/resolv.conf > "$RESOLV_TMP"
+            if ! cmp -s "$RESOLV_TMP" /etc/resolv.conf; then
+                warning "Duplicate entries found in /etc/resolv.conf, fixing..."
+                cat "$RESOLV_TMP" > /etc/resolv.conf
+                success "Removed duplicate DNS entries"
+            fi
+            rm -f "$RESOLV_TMP"
+        fi
     else
         error "DHCP configuration process FAILED. See errors above."
     fi
@@ -698,16 +721,3 @@ else
     info "Backup of previous config: $BACKUP_FILE"
     info "To restore: cp $BACKUP_FILE /etc/network/interfaces && ifreload -a"
 fi
-
-echo
-info "Useful commands to verify:"
-echo "  ip addr show vmbr0"
-echo "  ip route"
-if $IPV6_ENABLED; then
-    echo "  ip -6 addr show vmbr0 scope global"
-    echo "  ip -6 route"
-fi
-echo "  cat /etc/resolv.conf"
-echo "  cat /etc/hosts"
-
-exit $($NETWORK_APPLY_SUCCESS || echo 1) # Exit 0 on success, 1 on failure (in non-dry-run)

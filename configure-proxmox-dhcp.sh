@@ -125,11 +125,13 @@ get_default_interface() {
 
 # Function to select bond mode
 select_bond_mode() {
+    echo ""
     info "Select bonding mode:"
     echo "1) active-backup (mode 1) - Fault tolerance, one active interface"
     echo "2) 802.3ad (mode 4) - LACP, requires switch configuration"
     echo "3) balance-alb (mode 6) - Adaptive load balancing"
     echo "4) balance-xor (mode 2) - Static load balancing"
+    echo ""
     
     while true; do
         read -p "Enter choice [1-4]: " bond_choice

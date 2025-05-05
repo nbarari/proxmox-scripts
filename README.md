@@ -6,7 +6,7 @@ A collection of scripts to configure and maintain Proxmox VE hosts using DHCP ne
 
 *   [Overview](#overview)
 *   [Scripts](#scripts)
-    *   [`proxmox-dhcp.sh` (DHCP Configuration)](#proxmox-dhcpsh-dhcp-configuration)
+    *   [`configure-proxmox-dhcp.sh` (DHCP Configuration)](#proxmox-dhcpsh-dhcp-configuration)
     *   [`update-proxmox-hosts.sh` (Hosts File Updater)](#update-proxmox-hostssh-hosts-file-updater)
 *   [Example `/etc/network/interfaces` Configurations](#example-etcnetworkinterfaces-configurations)
     *   [Example 1: Bonded Interfaces (active-backup mode)](#example-1-bonded-interfaces-active-backup-mode)
@@ -27,12 +27,12 @@ A collection of scripts to configure and maintain Proxmox VE hosts using DHCP ne
 
 Using DHCP on a Proxmox host can be convenient, but requires careful setup of the network bridge and ongoing management of the `/etc/hosts` file to ensure Proxmox services function correctly if the IP address changes. These scripts aim to simplify this process:
 
-1.  **Initial Configuration (`proxmox-dhcp.sh`)**: Automatically configures Proxmox networking for DHCP, handling bridge creation, optional bonding, IPv6, and fallback IPs.
+1.  **Initial Configuration (`configure-proxmox-dhcp.sh`)**: Automatically configures Proxmox networking for DHCP, handling bridge creation, optional bonding, IPv6, and fallback IPs.
 2.  **IP Address Updates (`update-proxmox-hosts.sh`)**: Keeps the Proxmox `/etc/hosts` file synchronized with the current IP address assigned via DHCP or static fallback, ensuring service reachability.
 
 ## Scripts
 
-### `proxmox-dhcp.sh` (DHCP Configuration)
+### `configure-proxmox-dhcp.sh` (DHCP Configuration)
 
 This script performs the initial, interactive configuration of a Proxmox host to use DHCP for its management interface (`vmbr0`).
 
@@ -78,7 +78,7 @@ This script is designed to run periodically (e.g., via systemd or cron) to ensur
 
 ## Example `/etc/network/interfaces` Configurations
 
-The `proxmox-dhcp.sh` script generates configurations like these:
+The `configure-proxmox-dhcp.sh` script generates configurations like these:
 
 ### Example 1: Bonded Interfaces (active-backup mode)
 
@@ -147,14 +147,14 @@ git clone https://github.com/nbarari/proxmox-scripts.git
 cd proxmox-scripts
 
 # Copy files to appropriate locations (adjust script names if you renamed them)
- cp proxmox-dhcp.sh /usr/local/bin/
+ cp configure-proxmox-dhcp.sh /usr/local/bin/
  cp update-proxmox-hosts.sh /usr/local/bin/
 # Assuming systemd files are in a 'systemd' subdirectory
  cp systemd/update-proxmox-hosts.service /etc/systemd/system/
  cp systemd/update-proxmox-hosts.path /etc/systemd/system/
 
 # Make scripts executable
- chmod +x /usr/local/bin/proxmox-dhcp.sh
+ chmod +x /usr/local/bin/configure-proxmox-dhcp.sh
  chmod +x /usr/local/bin/update-proxmox-hosts.sh
 
 # Reload systemd daemon
@@ -165,8 +165,8 @@ cd proxmox-scripts
 
 ```bash
 # Download the configuration script (adjust URL/filename if needed)
- wget -O /usr/local/bin/proxmox-dhcp.sh https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/proxmox-dhcp.sh
- chmod +x /usr/local/bin/proxmox-dhcp.sh
+ wget -O /usr/local/bin/configure-proxmox-dhcp.sh https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/configure-proxmox-dhcp.sh
+ chmod +x /usr/local/bin/configure-proxmox-dhcp.sh
 
 # Download the hosts updater script (adjust URL/filename if needed)
  wget -O /usr/local/bin/update-proxmox-hosts.sh https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/update-proxmox-hosts.sh
@@ -186,13 +186,13 @@ cd proxmox-scripts
 
 1.  **Run the configuration script with `--dry-run` first:**
     ```bash
-     /usr/local/bin/proxmox-dhcp.sh --dry-run
+     /usr/local/bin/configure-proxmox-dhcp.sh --dry-run
     ```
     Review the detected interfaces, options selected, and the proposed `/etc/network/interfaces` configuration.
 
 2.  **Run the script without `--dry-run`:**
     ```bash
-     /usr/local/bin/proxmox-dhcp.sh
+     /usr/local/bin/configure-proxmox-dhcp.sh
     ```
     *   Follow the prompts to select interfaces, bonding mode (if applicable), IPv6 options, and static fallback.
     *   Confirm the summary to proceed.

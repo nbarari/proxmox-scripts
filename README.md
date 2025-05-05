@@ -58,7 +58,7 @@ This script performs the initial, interactive configuration of a Proxmox host to
 *   **User Friendly**: Provides colored output, clear prompts, and input validation.
 
 **Note:**
-*   You must run this script as root (`sudo`).
+*   You must run this script as root (``).
 *   Applying network changes can disconnect your SSH session. Ensure you have console or out-of-band access available.
 
 ### `update-proxmox-hosts.sh` (Hosts File Updater)
@@ -147,37 +147,37 @@ git clone https://github.com/nbarari/proxmox-scripts.git
 cd proxmox-scripts
 
 # Copy files to appropriate locations (adjust script names if you renamed them)
-sudo cp proxmox-dhcp.sh /usr/local/bin/
-sudo cp update-proxmox-hosts.sh /usr/local/bin/
+ cp proxmox-dhcp.sh /usr/local/bin/
+ cp update-proxmox-hosts.sh /usr/local/bin/
 # Assuming systemd files are in a 'systemd' subdirectory
-sudo cp systemd/update-proxmox-hosts.service /etc/systemd/system/
-sudo cp systemd/update-proxmox-hosts.path /etc/systemd/system/
+ cp systemd/update-proxmox-hosts.service /etc/systemd/system/
+ cp systemd/update-proxmox-hosts.path /etc/systemd/system/
 
 # Make scripts executable
-sudo chmod +x /usr/local/bin/proxmox-dhcp.sh
-sudo chmod +x /usr/local/bin/update-proxmox-hosts.sh
+ chmod +x /usr/local/bin/proxmox-dhcp.sh
+ chmod +x /usr/local/bin/update-proxmox-hosts.sh
 
 # Reload systemd daemon
-sudo systemctl daemon-reload
+ systemctl daemon-reload
 ```
 
 ### Method 2: Manual Download
 
 ```bash
 # Download the configuration script (adjust URL/filename if needed)
-sudo wget -O /usr/local/bin/proxmox-dhcp.sh https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/proxmox-dhcp.sh
-sudo chmod +x /usr/local/bin/proxmox-dhcp.sh
+ wget -O /usr/local/bin/proxmox-dhcp.sh https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/proxmox-dhcp.sh
+ chmod +x /usr/local/bin/proxmox-dhcp.sh
 
 # Download the hosts updater script (adjust URL/filename if needed)
-sudo wget -O /usr/local/bin/update-proxmox-hosts.sh https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/update-proxmox-hosts.sh
-sudo chmod +x /usr/local/bin/update-proxmox-hosts.sh
+ wget -O /usr/local/bin/update-proxmox-hosts.sh https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/update-proxmox-hosts.sh
+ chmod +x /usr/local/bin/update-proxmox-hosts.sh
 
 # Download systemd service files (adjust URLs if needed)
-sudo wget -O /etc/systemd/system/update-proxmox-hosts.service https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.service
-sudo wget -O /etc/systemd/system/update-proxmox-hosts.path https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.path
+ wget -O /etc/systemd/system/update-proxmox-hosts.service https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.service
+ wget -O /etc/systemd/system/update-proxmox-hosts.path https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.path
 
 # Reload systemd daemon
-sudo systemctl daemon-reload
+ systemctl daemon-reload
 ```
 
 ## Usage
@@ -186,13 +186,13 @@ sudo systemctl daemon-reload
 
 1.  **Run the configuration script with `--dry-run` first:**
     ```bash
-    sudo /usr/local/bin/proxmox-dhcp.sh --dry-run
+     /usr/local/bin/proxmox-dhcp.sh --dry-run
     ```
     Review the detected interfaces, options selected, and the proposed `/etc/network/interfaces` configuration.
 
 2.  **Run the script without `--dry-run`:**
     ```bash
-    sudo /usr/local/bin/proxmox-dhcp.sh
+     /usr/local/bin/proxmox-dhcp.sh
     ```
     *   Follow the prompts to select interfaces, bonding mode (if applicable), IPv6 options, and static fallback.
     *   Confirm the summary to proceed.
@@ -211,7 +211,7 @@ sudo systemctl daemon-reload
     cat /etc/network/interfaces # Verify the generated config
     cat /etc/hosts             # Verify hosts file entry
     ```
-    If the script failed to apply the configuration or you lost connection, use the console/OOB access to restore the backup (`sudo cp /etc/network/interfaces.backup.YYYYMMDDHHMMSS /etc/network/interfaces`) and restart networking (`sudo ifreload -a` or `sudo systemctl restart networking`). A reboot may also help apply changes cleanly.
+    If the script failed to apply the configuration or you lost connection, use the console/OOB access to restore the backup (` cp /etc/network/interfaces.backup.YYYYMMDDHHMMSS /etc/network/interfaces`) and restart networking (` ifreload -a` or ` systemctl restart networking`). A reboot may also help apply changes cleanly.
 
 ### Setting Up Automatic Hosts File Updates
 
@@ -223,8 +223,8 @@ The `.path` unit monitors for network changes (specifically, the `vmbr0` interfa
 
 1.  Enable and start the systemd path unit (this will automatically activate the service when needed):
     ```bash
-    sudo systemctl enable update-proxmox-hosts.path
-    sudo systemctl start update-proxmox-hosts.path
+     systemctl enable update-proxmox-hosts.path
+     systemctl start update-proxmox-hosts.path
     ```
 
 2.  Verify the path unit is active:
@@ -242,10 +242,10 @@ This provides purely time-based checks. It can be used alongside systemd or as a
 
 ```bash
 # Check and update on reboot
-(crontab -l 2>/dev/null; echo "@reboot /usr/local/bin/update-proxmox-hosts.sh >> /var/log/update-hosts.log 2>&1") | sudo crontab -u root -
+(crontab -l 2>/dev/null; echo "@reboot /usr/local/bin/update-proxmox-hosts.sh >> /var/log/update-hosts.log 2>&1") |  crontab -u root -
 
 # Check and update every 15 minutes
-(crontab -l 2>/dev/null; echo "*/15 * * * * /usr/local/bin/update-proxmox-hosts.sh >> /var/log/update-hosts.log 2>&1") | sudo crontab -u root -
+(crontab -l 2>/dev/null; echo "*/15 * * * * /usr/local/bin/update-proxmox-hosts.sh >> /var/log/update-hosts.log 2>&1") |  crontab -u root -
 ```
 *(Note: Using cron adds periodic checks but might be redundant if the systemd `.path` unit reliably triggers updates.)*
 
@@ -270,7 +270,7 @@ If you encounter issues with Proxmox services after IP changes:
     ```bash
     systemctl status pve-cluster pvedaemon pveproxy pvestatd
     ```
-    If services are down or logs indicate resolution errors, manually run the update script (`sudo /usr/local/bin/update-proxmox-hosts.sh`) and/or restart the services.
+    If services are down or logs indicate resolution errors, manually run the update script (` /usr/local/bin/update-proxmox-hosts.sh`) and/or restart the services.
 
 4.  **Check Updater Service/Cron Logs:**
     *   Systemd: `journalctl -u update-proxmox-hosts.service`

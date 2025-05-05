@@ -29,9 +29,9 @@ NC='\033[0m' # No Color
 # --- Helper Functions ---
 
 # Function to print colored messages
-info() { echo -e "${BLUE}[INFO]${NC} $1"; }
-success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
-warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
+info() { echo -e "${BLUE}[INFO]${NC} $1" >&2; }
+success() { echo -e "${GREEN}[SUCCESS]${NC} $1" >&2; }
+warning() { echo -e "${YELLOW}[WARNING]${NC} $1" >&2; }
 error() { echo -e "${RED}[ERROR]${NC} $1" >&2; } # Don't exit immediately from error func
 
 progress() {

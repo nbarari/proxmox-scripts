@@ -38,13 +38,13 @@ if [ $(echo "$AVAILABLE_IFACES" | wc -l) -gt 1 ]; then
     echo "Would you like to bond these interfaces for redundancy/performance? (y/n)"
     read -r use_bond
     if [[ $use_bond =~ ^[Yy]$ ]]; then
-        SELECTED_IFACES="$AVAILABLE_IFACES"
+        SELECTED_IFACES=$(echo "$AVAILABLE_IFACES" | xargs)
         BONDING_ENABLED=true
     else
         echo "Do you want to configure all interfaces for DHCP? (y/n)"
         read -r configure_all
         if [[ $configure_all =~ ^[Yy]$ ]]; then
-            SELECTED_IFACES="$AVAILABLE_IFACES"
+            SELECTED_IFACES=$(echo "$AVAILABLE_IFACES" | xargs)
         else
             echo "Please select an interface to configure for DHCP:"
             select iface in $AVAILABLE_IFACES; do
@@ -57,14 +57,14 @@ if [ $(echo "$AVAILABLE_IFACES" | wc -l) -gt 1 ]; then
         BONDING_ENABLED=false
     fi
 else
-    SELECTED_IFACES="$AVAILABLE_IFACES"
+    SELECTED_IFACES=$(echo "$AVAILABLE_IFACES" | xargs)
     BONDING_ENABLED=false
 fi
 
 # 3. Ensure the selection logic always sets SELECTED_IFACES
 if [ -z "$SELECTED_IFACES" ]; then
     echo "No interface selected. Defaulting to all available interfaces: $AVAILABLE_IFACES"
-    SELECTED_IFACES="$AVAILABLE_IFACES"
+    SELECTED_IFACES=$(echo "$AVAILABLE_IFACES" | xargs)
 fi
 
 echo "Selected interfaces for DHCP configuration: $SELECTED_IFACES"

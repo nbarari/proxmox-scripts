@@ -134,6 +134,7 @@ select_bond_mode() {
 }
 
 # Function to select interfaces for bonding
+# Function to select interfaces for bonding
 select_bond_interfaces() {
     local available_ifaces=($@) # Pass available interfaces as arguments
     local num_ifaces=${#available_ifaces[@]}
@@ -141,51 +142,62 @@ select_bond_interfaces() {
     local bond_slaves=()
 
     if [ "$num_ifaces" -lt 2 ]; then
-        error "At least two suitable interfaces are required for bonding."
+        # Send errors to stderr
+        error "At least two suitable interfaces are required for bonding." >&2
         return 1
     fi
 
-    echo
-    info "Select interfaces to include in the bond:"
+    # Send informational prompts/lists to stderr
+    echo >&2 # Print newline to stderr
+    info "Select interfaces to include in the bond:" >&2
     for i in "${!available_ifaces[@]}"; do
-        printf " %d) %s\n" "$((i+1))" "${available_ifaces[$i]}"
+        printf " %d) %s\n" "$((i+1))" "${available_ifaces[$i]}" >&2
     done
-    echo
+    echo >&2 # Print newline to stderr
 
     while true; do
+        # The read prompt goes to stderr automatically
         read -p "Enter numbers (space-separated) of interfaces to bond [e.g., 1 2]: " -a selected_indices
         bond_slaves=() # Reset slaves for validation
         local valid_selection=true
         if [ ${#selected_indices[@]} -eq 0 ]; then
-            error "No interfaces selected."
+            error "No interfaces selected." >&2 # Send errors to stderr
             valid_selection=false
         elif [ ${#selected_indices[@]} -lt 2 ]; then
-            error "Please select at least two interfaces for bonding."
+            error "Please select at least two interfaces for bonding." >&2 # Send errors to stderr
             valid_selection=false
         else
             for index in "${selected_indices[@]}"; do
                 if ! [[ "$index" =~ ^[0-9]+$ ]] || [ "$index" -lt 1 ] || [ "$index" -gt "$num_ifaces" ]; then
-                    error "Invalid selection: '$index'. Please use numbers from the list."
+                    error "Invalid selection: '$index'. Please use numbers from the list." >&2 # Send errors to stderr
                     valid_selection=false
                     break
                 fi
-                # Check for duplicate selections
-                if printf '%s\n' "${bond_slaves[@]}" | grep -q -x "${available_ifaces[$((index-1))]}"; then
-                     error "Duplicate selection: ${available_ifaces[$((index-1))]}."
-                     valid_selection=false
-                     break
-                fi
-                bond_slaves+=("${available_ifaces[$((index-1))]}")
+                 # Check for duplicate selections (minor logic fix here too)
+                 local current_iface="${available_ifaces[$((index-1))]}"
+                 local is_duplicate=false
+                 for slave in "${bond_slaves[@]}"; do
+                     if [[ "$slave" == "$current_iface" ]]; then
+                         is_duplicate=true
+                         break
+                     fi
+                 done
+                 if $is_duplicate; then
+                      error "Duplicate selection: $current_iface." >&2 # Send errors to stderr
+                      valid_selection=false
+                      break
+                 fi
+                bond_slaves+=("$current_iface")
             done
         fi
 
         if [ "$valid_selection" = true ]; then
-            echo "${bond_slaves[@]}" # Return space-separated list
+            # ONLY print the result to stdout for command substitution
+            echo "${bond_slaves[@]}"
             return 0
         fi
     done
 }
-
 
 # Validate hostname format
 validate_hostname() {

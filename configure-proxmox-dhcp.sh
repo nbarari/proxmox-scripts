@@ -5,7 +5,7 @@
 # Description: Automatically configures a Proxmox host to use DHCP instead of
 #              static IP addressing and updates /etc/hosts accordingly.
 #              Dynamically detects network interfaces and allows user selection.
-# Author: nbarari (original script)
+# Author: nbarari
 # GitHub: https://github.com/nbarari/proxmox-scripts
 # ===============================================================================
 

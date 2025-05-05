@@ -127,14 +127,10 @@ if [ -z "$CURRENT_IP" ]; then
 fi
 
 if [ -n "$CURRENT_IP" ]; then
-    # Check if hostname entry exists in /etc/hosts
-    if grep -q "^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+ $HOSTNAME" /etc/hosts; then
-        # Update existing entry
-        sed -i "s/^[0-9]\+\.[0-9]\+\.[0-9]\+\.[0-9]\+ $HOSTNAME/$CURRENT_IP $HOSTNAME/" /etc/hosts
-    else
-        # Add new entry
-        echo "$CURRENT_IP $HOSTNAME" >> /etc/hosts
-    fi
+    # Remove any old entries for this hostname (with or without FQDN)
+    sed -i "/[[:space:]]$HOSTNAME(\.[^ ]*)*[[:space:]]*$/d" /etc/hosts
+    # Add new entry
+    echo "$CURRENT_IP $HOSTNAME" >> /etc/hosts
     echo "Updated /etc/hosts with $HOSTNAME -> $CURRENT_IP"
 else
     echo "Warning: Could not detect an IP address to use in /etc/hosts"

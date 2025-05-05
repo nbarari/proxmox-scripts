@@ -9,6 +9,26 @@
 # GitHub: https://github.com/nbarari/proxmox-scripts
 # ===============================================================================
 
+# Function to select bond mode
+select_bond_mode() {
+    echo "Select bonding mode:"
+    echo "1) active-backup (mode 1) - Fault tolerance, one active interface"
+    echo "2) 802.3ad (mode 4) - LACP, requires switch configuration"
+    echo "3) balance-alb (mode 6) - Adaptive load balancing"
+    echo "4) balance-xor (mode 2) - Static load balancing"
+    
+    while true; do
+        read -p "Enter choice [1-4]: " bond_choice
+        case $bond_choice in
+            1) echo "active-backup"; return ;;
+            2) echo "802.3ad"; return ;;
+            3) echo "balance-alb"; return ;;
+            4) echo "balance-xor"; return ;;
+            *) echo "Invalid choice. Please select 1-4." ;;
+        esac
+    done
+}
+
 # Warn if running over SSH
 if [ -n "$SSH_CONNECTION" ]; then
     echo "WARNING: You are running this script over SSH."
@@ -40,6 +60,8 @@ if [ $(echo "$AVAILABLE_IFACES" | wc -l) -gt 1 ]; then
     if [[ $use_bond =~ ^[Yy]$ ]]; then
         SELECTED_IFACES=$(echo "$AVAILABLE_IFACES" | xargs)
         BONDING_ENABLED=true
+        BOND_MODE=$(select_bond_mode)
+        echo "Using bond mode: $BOND_MODE"
     else
         echo "Do you want to configure all interfaces for DHCP? (y/n)"
         read -r configure_all
@@ -82,7 +104,7 @@ auto bond0
 iface bond0 inet manual
     bond-slaves $SELECTED_IFACES
     bond-miimon 100
-    bond-mode 802.3ad
+    bond-mode $BOND_MODE
 
 auto vmbr0
 iface vmbr0 inet dhcp
@@ -130,8 +152,9 @@ if [ -n "$CURRENT_IP" ]; then
     # Remove any old entries for this hostname (with or without FQDN)
     sed -i "/[[:space:]]$HOSTNAME(\.[^ ]*)*[[:space:]]*$/d" /etc/hosts
     # Add new entry
-    echo "$CURRENT_IP $HOSTNAME" >> /etc/hosts
-    echo "Updated /etc/hosts with $HOSTNAME -> $CURRENT_IP"
+    FQDN=$(hostname -f 2>/dev/null || hostname)
+    echo "$CURRENT_IP $FQDN $HOSTNAME" >> /etc/hosts
+    echo "Updated /etc/hosts with $FQDN $HOSTNAME -> $CURRENT_IP"
 else
     echo "Warning: Could not detect an IP address to use in /etc/hosts"
 fi

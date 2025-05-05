@@ -21,7 +21,7 @@ fi
 HOSTNAME=$(hostname)
 
 # Detect all physical network interfaces (exclude lo and vmbr*)
-AVAILABLE_IFACES=$(ip -o -4 addr show | awk '{print $2}' | grep -vE 'lo|vmbr[0-9]+' | sort -u)
+AVAILABLE_IFACES=$(ls /sys/class/net | grep -vE '^(lo|vmbr[0-9]+|tailscale0)$')
 
 # 1. Check if AVAILABLE_IFACES is empty
 if [ -z "$AVAILABLE_IFACES" ]; then

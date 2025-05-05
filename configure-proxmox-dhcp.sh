@@ -475,9 +475,9 @@ fi
 info "Available physical interfaces:"
 for iface in $PHYSICAL_IFACES; do
     echo -e "  ${BLUE}$iface${NC}"
-    local mac=$(cat /sys/class/net/$iface/address 2>/dev/null || echo "unknown")
-    local status=$(get_link_status "$iface")
-    local speed=$(cat /sys/class/net/$iface/speed 2>/dev/null || echo "unknown")
+    mac=$(cat /sys/class/net/$iface/address 2>/dev/null || echo "unknown")
+    status=$(get_link_status "$iface")
+    speed=$(cat /sys/class/net/$iface/speed 2>/dev/null || echo "unknown")
     echo "  - MAC: $mac"
     echo "  - Status: $status"
     if [ "$speed" != "unknown" ]; then

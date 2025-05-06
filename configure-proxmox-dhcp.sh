@@ -229,6 +229,18 @@ validate_prefix() {
     return 1
 }
 
+# Validate DNS IP address format
+validate_dns_ip() {
+    local ip=$1
+    # Verify it's a valid IPv4 address
+    if [[ $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+        IFS='.' read -r -a octets <<< "$ip"
+        for octet in "${octets[@]}"; do if [ "$octet" -gt 255 ]; then return 1; fi; done
+        return 0
+    fi
+    return 1
+}
+
 # --- Configuration & Application Functions ---
 
 # Function to check for common misconfigurations
@@ -548,11 +560,63 @@ fi
 read -p "Configure IPv6 on vmbr0? (y/N): " configure_ipv6
 IPV6_ENABLED=false
 IPV6_METHOD=""
+PRIMARY_DNS=""
+SECONDARY_DNS=""
+
 if [[ "$configure_ipv6" =~ ^[Yy]$ ]]; then
     IPV6_ENABLED=true
     read -p "Use DHCPv6 or SLAAC (auto)? [dhcp/auto, default: auto]: " ipv6_choice
     if [[ "$ipv6_choice" =~ ^[Dd][Hh][Cc][Pp]$ ]]; then IPV6_METHOD="dhcp"; else IPV6_METHOD="auto"; fi
     success "IPv6 enabled using: $IPV6_METHOD"
+    
+    # Ask for IPv4 DNS servers to preserve
+    read -p "Configure IPv4 DNS servers to ensure dual-stack DNS resolution? (Y/n): " configure_dns
+    if [[ ! "$configure_dns" =~ ^[Nn]$ ]]; then
+        # Ask for primary IPv4 DNS server
+        while true; do
+            read -p "Enter primary IPv4 DNS server [8.8.8.8]: " PRIMARY_DNS
+            PRIMARY_DNS=${PRIMARY_DNS:-8.8.8.8} # Default to Google DNS if empty
+            if validate_dns_ip "$PRIMARY_DNS"; then break; else error "Invalid IPv4 address format."; fi
+        done
+        
+        # Ask for secondary IPv4 DNS server
+        while true; do
+            read -p "Enter secondary IPv4 DNS server [1.1.1.1]: " SECONDARY_DNS
+            SECONDARY_DNS=${SECONDARY_DNS:-1.1.1.1} # Default to Cloudflare DNS if empty
+            if validate_dns_ip "$SECONDARY_DNS"; then
+                if [ "$SECONDARY_DNS" = "$PRIMARY_DNS" ]; then
+                    warning "Secondary DNS is the same as primary. Continuing anyway."
+                fi
+                break
+            else
+                error "Invalid IPv4 address format."
+            fi
+        done
+        
+        success "IPv4 DNS servers set: $PRIMARY_DNS, $SECONDARY_DNS"
+        
+        # Configure DHCP client to preserve IPv4 DNS servers
+        info "Configuring DHCP client to preserve IPv4 DNS servers..."
+        if [ -f "/etc/dhcp/dhclient.conf" ]; then
+            if [ "$DRY_RUN" = "true" ]; then
+                info "DRY RUN: Would update dhclient.conf to prepend DNS servers: $PRIMARY_DNS, $SECONDARY_DNS"
+            else
+                if grep -q "^#prepend domain-name-servers" /etc/dhcp/dhclient.conf; then
+                    execute sed -i "s/#prepend domain-name-servers.*/prepend domain-name-servers $PRIMARY_DNS, $SECONDARY_DNS;/" /etc/dhcp/dhclient.conf
+                    success "Updated dhclient.conf to preserve IPv4 DNS servers"
+                elif ! grep -q "^prepend domain-name-servers" /etc/dhcp/dhclient.conf; then
+                    execute sed -i "/request subnet-mask/a prepend domain-name-servers $PRIMARY_DNS, $SECONDARY_DNS;" /etc/dhcp/dhclient.conf
+                    success "Added IPv4 DNS configuration to dhclient.conf"
+                else
+                    # Replace existing prepend line
+                    execute sed -i "s/^prepend domain-name-servers.*/prepend domain-name-servers $PRIMARY_DNS, $SECONDARY_DNS;/" /etc/dhcp/dhclient.conf
+                    success "Updated existing IPv4 DNS servers in dhclient.conf"
+                fi
+            fi
+        else
+            warning "dhclient.conf not found at /etc/dhcp/dhclient.conf"
+        fi
+    fi
 fi
 
 read -p "Configure a static IPv4 fallback if DHCP fails? (y/N): " use_fallback
@@ -585,7 +649,12 @@ else
 fi
 info "IPv4 Method:       DHCP"
 info "IPv6 Enabled:      $IPV6_ENABLED"
-if $IPV6_ENABLED; then info "IPv6 Method:       $IPV6_METHOD"; fi
+if $IPV6_ENABLED; then 
+    info "IPv6 Method:       $IPV6_METHOD"
+    if [ -n "$PRIMARY_DNS" ] && [ -n "$SECONDARY_DNS" ]; then
+        info "IPv4 DNS Servers:  $PRIMARY_DNS, $SECONDARY_DNS"
+    fi
+fi
 info "Static Fallback:   $FALLBACK_ENABLED"
 if $FALLBACK_ENABLED; then info "Fallback IP:       $FALLBACK_IP/$FALLBACK_PREFIX via $FALLBACK_GATEWAY"; fi
 echo "---------------------------"
@@ -664,6 +733,41 @@ if $NETWORK_APPLY_SUCCESS; then
         fi
     else
         info "DRY RUN: Would update /etc/hosts with: $OBTAINED_IP $FQDN $HOSTNAME"
+    fi
+
+    # Add DHCP client exit hook for DNS preservation
+    if $IPV6_ENABLED && [ -n "$PRIMARY_DNS" ] && [ -n "$SECONDARY_DNS" ] && [ "$DRY_RUN" != "true" ]; then
+        info "Setting up DHCP client exit hook for DNS preservation..."
+        hooks_dir="/etc/dhcp/dhclient-exit-hooks.d"
+        hook_file="$hooks_dir/dns-ipv4"
+        
+        if [ ! -d "$hooks_dir" ]; then
+            execute mkdir -p "$hooks_dir"
+        fi
+        
+        cat > "$hook_file.tmp" << EOF
+#!/bin/sh
+# Always ensure IPv4 DNS servers are present
+if [ -f /etc/resolv.conf ]; then
+  # Remove duplicate nameserver entries first
+  TMP_RESOLV=\$(mktemp)
+  awk '!seen[\$0]++' /etc/resolv.conf > "\$TMP_RESOLV"
+  cat "\$TMP_RESOLV" > /etc/resolv.conf
+  rm -f "\$TMP_RESOLV"
+  
+  # Add IPv4 DNS servers if not present
+  if ! grep -q "nameserver $PRIMARY_DNS" /etc/resolv.conf; then
+    sed -i '1i nameserver $PRIMARY_DNS' /etc/resolv.conf
+  fi
+  if ! grep -q "nameserver $SECONDARY_DNS" /etc/resolv.conf; then
+    sed -i '2i nameserver $SECONDARY_DNS' /etc/resolv.conf
+  fi
+fi
+EOF
+        
+        execute mv "$hook_file.tmp" "$hook_file"
+        execute chmod +x "$hook_file"
+        success "Created DHCP client exit hook to maintain IPv4 DNS servers"
     fi
 
     # Connectivity Tests

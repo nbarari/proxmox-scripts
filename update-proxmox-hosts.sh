@@ -42,8 +42,9 @@ if ! grep -q -E "^\s*$CURRENT_IP\s+.*\b($FQDN|$HOSTNAME)\b" "$HOSTS_FILE"; then
     NEEDS_UPDATE=true
     echo "$(date): IP $CURRENT_IP not correctly mapped to $FQDN/$HOSTNAME in $HOSTS_FILE."
 else
-    # If IP is mapped, check if *other* IPs are mapped to our hostnames (stale entries)
-    if grep -q -E "^\s*[0-9.]+\s+.*\b($FQDN|$HOSTNAME)\b" "$HOSTS_FILE" | grep -v "^\s*$CURRENT_IP\s"; then
+    # If IP is mapped, check if *other* IPs are mapped to our hostnames (stale entries).
+    # List all IP->hostname lines, drop the ones for the current IP, and see if any remain.
+    if grep -E "^\s*[0-9.]+\s+.*\b($FQDN|$HOSTNAME)\b" "$HOSTS_FILE" | grep -vE "^\s*$CURRENT_IP\s" | grep -q .; then
        NEEDS_UPDATE=true
        echo "$(date): Found stale IP entries for $FQDN/$HOSTNAME in $HOSTS_FILE."
     else
@@ -61,11 +62,21 @@ if [ "$NEEDS_UPDATE" = true ]; then
         exit 1
     fi
 
-    # Copy non-hostname lines and the correct new line to temp file
-    # Remove any line mapping ANY IP to our hostname/FQDN
-    grep -v -E "\s+.*\b($FQDN|$HOSTNAME)\b" "$HOSTS_FILE" > "$TMP_HOSTS"
+    # Copy non-hostname lines and the correct new line to temp file.
+    # Remove any line mapping ANY IP to our hostname/FQDN. grep -v exits non-zero
+    # if it filters out every line; '|| true' keeps that from aborting under set -e
+    # (the sanity checks below decide whether the result is safe to install).
+    grep -v -E "\s+.*\b($FQDN|$HOSTNAME)\b" "$HOSTS_FILE" > "$TMP_HOSTS" || true
     # Add the correct line
     echo "$CURRENT_IP    $FQDN $HOSTNAME" >> "$TMP_HOSTS"
+
+    # Sanity check: never install a hosts file that lost its loopback mapping
+    # (this can happen if 127.0.0.1 shared a line with our hostname and got filtered).
+    if ! grep -qE '^\s*127\.0\.0\.1\s' "$TMP_HOSTS"; then
+        echo "$(date): Error: Generated hosts file is missing the 127.0.0.1 localhost entry. Aborting without changes." >&2
+        rm -f "$TMP_HOSTS"
+        exit 1
+    fi
 
     # Check if the temp file is valid (basic check)
     if [ -s "$TMP_HOSTS" ]; then

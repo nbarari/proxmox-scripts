@@ -87,7 +87,9 @@ is_physical_interface() {
 detect_suitable_interfaces() {
     local interfaces=""
     # List all interfaces, exclude loopback and known master types
-    for iface in $(ls /sys/class/net | grep -v -E '^(lo|bonding_masters)$'); do
+    for iface in /sys/class/net/*; do
+        iface=$(basename "$iface")
+        case "$iface" in lo|bonding_masters) continue ;; esac
         if is_physical_interface "$iface"; then
             interfaces="$interfaces $iface"
         fi
@@ -123,7 +125,7 @@ select_bond_mode() {
     local choice
     while true; do
         # read prompt goes to stderr automatically
-        read -p "Enter choice [1-5, default 1]: " choice
+        read -rp "Enter choice [1-5, default 1]: " choice
         choice=${choice:-1} # Default to 1 if empty
         case $choice in
             # ONLY echo the final result to stdout
@@ -140,7 +142,7 @@ select_bond_mode() {
 
 # Function to select interfaces for bonding
 select_bond_interfaces() {
-    local available_ifaces=($@) # Pass available interfaces as arguments
+    local available_ifaces=("$@") # Pass available interfaces as arguments
     local num_ifaces=${#available_ifaces[@]}
     local selected_indices=()
     local bond_slaves=()
@@ -161,7 +163,7 @@ select_bond_interfaces() {
 
     while true; do
         # The read prompt goes to stderr automatically
-        read -p "Enter numbers (space-separated) of interfaces to bond [e.g., 1 2]: " -a selected_indices
+        read -rp "Enter numbers (space-separated) of interfaces to bond [e.g., 1 2]: " -a selected_indices
         bond_slaves=() # Reset slaves for validation
         local valid_selection=true
         if [ ${#selected_indices[@]} -eq 0 ]; then
@@ -216,7 +218,8 @@ validate_ip() {
     local ip=$1
     if [[ $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
         IFS='.' read -r -a octets <<< "$ip"
-        for octet in "${octets[@]}"; do if [ "$octet" -gt 255 ]; then return 1; fi; done
+        # Force base-10 so zero-padded octets (e.g. 08, 09) don't trip the octal parser
+        for octet in "${octets[@]}"; do if [ "$((10#$octet))" -gt 255 ]; then return 1; fi; done
         return 0
     fi
     return 1
@@ -229,16 +232,9 @@ validate_prefix() {
     return 1
 }
 
-# Validate DNS IP address format
+# Validate DNS IP address format (same rules as a regular IPv4 address)
 validate_dns_ip() {
-    local ip=$1
-    # Verify it's a valid IPv4 address
-    if [[ $ip =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-        IFS='.' read -r -a octets <<< "$ip"
-        for octet in "${octets[@]}"; do if [ "$octet" -gt 255 ]; then return 1; fi; done
-        return 0
-    fi
-    return 1
+    validate_ip "$1"
 }
 
 # --- Configuration & Application Functions ---
@@ -258,19 +254,18 @@ check_misconfigurations() {
         warning "Files found in /etc/network/interfaces.d/ might conflict or override settings."
         has_issues=1
     fi
-    # Check if selected interfaces are possibly used by VMs (basic check)
+    # Check if selected interfaces are possibly used by VMs (basic check).
+    # The real concern is a *physical* interface being directly used as a VM bridge
+    # (bridge=<iface>) instead of being enslaved to vmbr0. grep -E (POSIX ERE) does
+    # not support Perl's \Q..\E quoting, so match the bridge name with an explicit
+    # boundary instead. Physical interface names contain no ERE metacharacters.
     for iface in $interfaces_to_check; do
-        if grep -Eq "net[0-9]+=[^,]+,bridge=([^,]+|\Q$iface\E)" /etc/pve/qemu-server/*.conf 2>/dev/null || \
-           grep -Eq "net[0-9]+=[^,]+,tag=[^,]+,bridge=([^,]+|\Q$iface\E)" /etc/pve/qemu-server/*.conf 2>/dev/null; then
-            # This check is tricky. The real issue is if the *physical* interface is directly bridged
-            # by a VM *instead* of being part of vmbr0. Grepping is imperfect.
-            # A simpler check: is the interface *itself* listed as a bridge in a VM config?
-             if grep -Eq "bridge=\Q$iface\E" /etc/pve/qemu-server/*.conf 2>/dev/null; then
-                warning "Interface $iface might be directly used as a bridge by VMs. It should be part of vmbr0."
-                has_issues=1
-             fi
+        if grep -Eq "bridge=${iface}(,|\$)" /etc/pve/qemu-server/*.conf 2>/dev/null; then
+            warning "Interface $iface might be directly used as a bridge by VMs. It should be part of vmbr0."
+            has_issues=1
         fi
-        local status=$(get_link_status "$iface")
+        local status
+        status=$(get_link_status "$iface")
         if [ "$status" != "up" ]; then
             warning "Interface $iface link status is '$status' (not 'up')."
             # Don't set has_issues=1 just for link down, it might be intentional or temporary.
@@ -368,8 +363,7 @@ configure_interfaces() {
         echo "--- END ---"
     else
         # Write the configuration to the file
-        echo -e "$config_content" > "$interfaces_file"
-        if [ $? -ne 0 ]; then
+        if ! echo -e "$config_content" > "$interfaces_file"; then
             error "Failed to write to $interfaces_file"
             return 1
         fi
@@ -412,9 +406,9 @@ apply_network_configuration() {
     fi
 
     info "Waiting for DHCPv4 lease on vmbr0 (up to $timeout seconds)..." >&2
-    for i in $(seq 1 $timeout); do
+    for i in $(seq 1 "$timeout"); do
         # Send progress to stderr
-        progress "Waiting for DHCPv4" $timeout $i >&2  
+        progress "Waiting for DHCPv4" "$timeout" "$i" >&2  
         current_ip=$(ip -4 addr show vmbr0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
         if [ -n "$current_ip" ]; then
             echo >&2 # Clear progress line (to stderr)
@@ -429,10 +423,10 @@ apply_network_configuration() {
         # Re-check IP after loop in case fallback applied late
         current_ip=$(ip -4 addr show vmbr0 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}')
         if [ -n "$current_ip" ] && [ "$fallback_enabled" = true ]; then
-             echo # Clear progress line
+             echo >&2 # Clear progress line (stderr, so it doesn't pollute the captured IP)
              success "Static fallback IP activated on vmbr0: $current_ip"
         else
-             echo # Clear progress line
+             echo >&2 # Clear progress line (stderr, so it doesn't pollute the captured IP)
              error "Timeout waiting for DHCPv4 lease on vmbr0, and fallback did not activate or wasn't configured."
              error "Consider checking DHCP server, network cables, or rolling back:"
              error "  cp $backup_file /etc/network/interfaces && ifreload -a"
@@ -444,7 +438,8 @@ apply_network_configuration() {
     if [ "$ipv6_enabled" = true ]; then
         info "Checking for IPv6 address on vmbr0..."
         sleep 5 # Give IPv6 a bit more time
-        local ipv6_addr=$(ip -6 addr show vmbr0 scope global 2>/dev/null | grep -oP '(?<=inet6\s)[0-9a-f:]+/[0-9]+' | head -n 1)
+        local ipv6_addr
+        ipv6_addr=$(ip -6 addr show vmbr0 scope global 2>/dev/null | grep -oP '(?<=inet6\s)[0-9a-f:]+/[0-9]+' | head -n 1)
         if [ -n "$ipv6_addr" ]; then
             success "IPv6 address obtained: $ipv6_addr"
         else
@@ -481,7 +476,7 @@ fi
 if [ -n "$SSH_CONNECTION" ]; then
     warning "Running over SSH detected. Network changes can disconnect your session."
     warning "Ensure console access or IPMI/KVM is available if issues arise."
-    read -p "Proceed anyway? (y/N): " confirm_ssh
+    read -rp "Proceed anyway? (y/N): " confirm_ssh
     if [[ ! "$confirm_ssh" =~ ^[Yy]$ ]]; then info "Exiting."; exit 0; fi
     echo
 fi
@@ -515,7 +510,7 @@ BOND_MODE=""
 
 if [ ${#PHYSICAL_IFACES_LIST[@]} -gt 1 ]; then
     info "Multiple interfaces available: ${PHYSICAL_IFACES_LIST[*]}"
-    read -p "Do you want to create a bond from these interfaces? (y/N): " use_bond
+    read -rp "Do you want to create a bond from these interfaces? (y/N): " use_bond
     if [[ "$use_bond" =~ ^[Yy]$ ]]; then
         BONDING_ENABLED=true
         SELECTED_IFACES_ARRAY=($(select_bond_interfaces "${PHYSICAL_IFACES_LIST[@]}"))
@@ -552,12 +547,12 @@ if [ -z "$SELECTED_IFACES" ]; then error "No interface was selected. Exiting."; 
 # --- Pre-Checks ---
 if ! check_misconfigurations "$SELECTED_IFACES"; then
     warning "Potential issues detected. Review warnings above."
-    read -p "Continue despite warnings? (y/N): " continue_anyway
+    read -rp "Continue despite warnings? (y/N): " continue_anyway
     if [[ ! "$continue_anyway" =~ ^[Yy]$ ]]; then info "Exiting."; exit 0; fi
 fi
 
 # --- Configure Options (IPv6, Fallback) ---
-read -p "Configure IPv6 on vmbr0? (y/N): " configure_ipv6
+read -rp "Configure IPv6 on vmbr0? (y/N): " configure_ipv6
 IPV6_ENABLED=false
 IPV6_METHOD=""
 PRIMARY_DNS=""
@@ -565,23 +560,23 @@ SECONDARY_DNS=""
 
 if [[ "$configure_ipv6" =~ ^[Yy]$ ]]; then
     IPV6_ENABLED=true
-    read -p "Use DHCPv6 or SLAAC (auto)? [dhcp/auto, default: auto]: " ipv6_choice
+    read -rp "Use DHCPv6 or SLAAC (auto)? [dhcp/auto, default: auto]: " ipv6_choice
     if [[ "$ipv6_choice" =~ ^[Dd][Hh][Cc][Pp]$ ]]; then IPV6_METHOD="dhcp"; else IPV6_METHOD="auto"; fi
     success "IPv6 enabled using: $IPV6_METHOD"
     
     # Ask for IPv4 DNS servers to preserve
-    read -p "Configure IPv4 DNS servers to ensure dual-stack DNS resolution? (Y/n): " configure_dns
+    read -rp "Configure IPv4 DNS servers to ensure dual-stack DNS resolution? (Y/n): " configure_dns
     if [[ ! "$configure_dns" =~ ^[Nn]$ ]]; then
         # Ask for primary IPv4 DNS server
         while true; do
-            read -p "Enter primary IPv4 DNS server [8.8.8.8]: " PRIMARY_DNS
+            read -rp "Enter primary IPv4 DNS server [8.8.8.8]: " PRIMARY_DNS
             PRIMARY_DNS=${PRIMARY_DNS:-8.8.8.8} # Default to Google DNS if empty
             if validate_dns_ip "$PRIMARY_DNS"; then break; else error "Invalid IPv4 address format."; fi
         done
         
         # Ask for secondary IPv4 DNS server
         while true; do
-            read -p "Enter secondary IPv4 DNS server [1.1.1.1]: " SECONDARY_DNS
+            read -rp "Enter secondary IPv4 DNS server [1.1.1.1]: " SECONDARY_DNS
             SECONDARY_DNS=${SECONDARY_DNS:-1.1.1.1} # Default to Cloudflare DNS if empty
             if validate_dns_ip "$SECONDARY_DNS"; then
                 if [ "$SECONDARY_DNS" = "$PRIMARY_DNS" ]; then
@@ -619,15 +614,15 @@ if [[ "$configure_ipv6" =~ ^[Yy]$ ]]; then
     fi
 fi
 
-read -p "Configure a static IPv4 fallback if DHCP fails? (y/N): " use_fallback
+read -rp "Configure a static IPv4 fallback if DHCP fails? (y/N): " use_fallback
 FALLBACK_ENABLED=false
 FALLBACK_IP=""
 FALLBACK_PREFIX=""
 FALLBACK_GATEWAY=""
 if [[ "$use_fallback" =~ ^[Yy]$ ]]; then
-    while true; do read -p "Enter static fallback IP address: " FALLBACK_IP; if validate_ip "$FALLBACK_IP"; then break; else error "Invalid IP."; fi; done
-    while true; do read -p "Enter fallback network prefix length (e.g., 24): " FALLBACK_PREFIX; if validate_prefix "$FALLBACK_PREFIX"; then break; else error "Invalid prefix (1-32)."; fi; done
-    while true; do read -p "Enter fallback gateway IP address: " FALLBACK_GATEWAY; if validate_ip "$FALLBACK_GATEWAY"; then break; else error "Invalid IP."; fi; done
+    while true; do read -rp "Enter static fallback IP address: " FALLBACK_IP; if validate_ip "$FALLBACK_IP"; then break; else error "Invalid IP."; fi; done
+    while true; do read -rp "Enter fallback network prefix length (e.g., 24): " FALLBACK_PREFIX; if validate_prefix "$FALLBACK_PREFIX"; then break; else error "Invalid prefix (1-32)."; fi; done
+    while true; do read -rp "Enter fallback gateway IP address: " FALLBACK_GATEWAY; if validate_ip "$FALLBACK_GATEWAY"; then break; else error "Invalid IP."; fi; done
     FALLBACK_ENABLED=true
     success "Static fallback configured: $FALLBACK_IP/$FALLBACK_PREFIX via $FALLBACK_GATEWAY"
 fi
@@ -660,7 +655,7 @@ if $FALLBACK_ENABLED; then info "Fallback IP:       $FALLBACK_IP/$FALLBACK_PREFI
 echo "---------------------------"
 
 if [ "$DRY_RUN" != "true" ]; then
-    read -p "Proceed with applying this configuration? (y/N): " confirm_apply
+    read -rp "Proceed with applying this configuration? (y/N): " confirm_apply
     if [[ ! "$confirm_apply" =~ ^[Yy]$ ]]; then
         info "Aborted by user. No changes made."
         exit 0
@@ -808,9 +803,11 @@ else
                 success "Added IPv4 DNS server to /etc/resolv.conf"
             fi
             
-            # Check for duplicate entries
+            # Check for duplicate entries. Use an order-preserving dedup: 'sort -u'
+            # would reorder the file, changing nameserver query priority and moving
+            # search/domain/options lines, which corrupts DNS resolution.
             RESOLV_TMP=$(mktemp)
-            sort -u /etc/resolv.conf > "$RESOLV_TMP"
+            awk '!seen[$0]++' /etc/resolv.conf > "$RESOLV_TMP"
             if ! cmp -s "$RESOLV_TMP" /etc/resolv.conf; then
                 warning "Duplicate entries found in /etc/resolv.conf, fixing..."
                 cat "$RESOLV_TMP" > /etc/resolv.conf
@@ -837,4 +834,9 @@ fi
 echo "  cat /etc/resolv.conf"
 echo "  cat /etc/hosts"
 
-exit $($NETWORK_APPLY_SUCCESS || echo 1) # Exit 0 on success, 1 on failure (in non-dry-run)
+# Exit 0 on success (or dry run, where NETWORK_APPLY_SUCCESS is set true), 1 on failure
+if $NETWORK_APPLY_SUCCESS; then
+    exit 0
+else
+    exit 1
+fi

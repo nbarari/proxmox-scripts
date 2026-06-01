@@ -6,7 +6,7 @@ A collection of scripts to configure and maintain Proxmox VE hosts using DHCP ne
 
 *   [Overview](#overview)
 *   [Scripts](#scripts)
-    *   [`configure-proxmox-dhcp.sh` (DHCP Configuration)](#proxmox-dhcpsh-dhcp-configuration)
+    *   [`configure-proxmox-dhcp.sh` (DHCP Configuration)](#configure-proxmox-dhcpsh-dhcp-configuration)
     *   [`update-proxmox-hosts.sh` (Hosts File Updater)](#update-proxmox-hostssh-hosts-file-updater)
 *   [Example `/etc/network/interfaces` Configurations](#example-etcnetworkinterfaces-configurations)
     *   [Example 1: Bonded Interfaces (active-backup mode)](#example-1-bonded-interfaces-active-backup-mode)
@@ -58,7 +58,7 @@ This script performs the initial, interactive configuration of a Proxmox host to
 *   **User Friendly**: Provides colored output, clear prompts, and input validation.
 
 **Note:**
-*   You must run this script as root (``).
+*   You must run this script as root (e.g. via `sudo`).
 *   Applying network changes can disconnect your SSH session. Ensure you have console or out-of-band access available.
 
 ### `update-proxmox-hosts.sh` (Hosts File Updater)
@@ -151,7 +151,7 @@ cd proxmox-scripts
  cp update-proxmox-hosts.sh /usr/local/bin/
 # Assuming systemd files are in a 'systemd' subdirectory
  cp systemd/update-proxmox-hosts.service /etc/systemd/system/
- cp systemd/update-proxmox-hosts.path /etc/systemd/system/
+ cp systemd/update-proxmox-hosts.timer /etc/systemd/system/
 
 # Make scripts executable
  chmod +x /usr/local/bin/configure-proxmox-dhcp.sh
@@ -174,7 +174,7 @@ cd proxmox-scripts
 
 # Download systemd service files (adjust URLs if needed)
  wget -O /etc/systemd/system/update-proxmox-hosts.service https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.service
- wget -O /etc/systemd/system/update-proxmox-hosts.path https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.path
+ wget -O /etc/systemd/system/update-proxmox-hosts.timer https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.timer
 
 # Reload systemd daemon
  systemctl daemon-reload
@@ -219,17 +219,20 @@ To keep `/etc/hosts` synchronized automatically when the IP changes, use the pro
 
 #### Method 1: Systemd (Recommended)
 
-The `.path` unit monitors for network changes (specifically, the `vmbr0` interface status), and the `.service` unit runs the `update-proxmox-hosts.sh` script when triggered.
+The `.timer` unit runs shortly after boot and then on a fixed interval (every 5 minutes by default), and the `.service` unit runs the `update-proxmox-hosts.sh` script when triggered.
 
-1.  Enable and start the systemd path unit (this will automatically activate the service when needed):
+> **Note:** A timer is used rather than a `.path` unit. systemd path units rely on inotify, and sysfs attributes such as `/sys/class/net/vmbr0/carrier` do not emit reliable inotify events, so a `PathChanged=` watch on them never fires. Adjust `OnUnitActiveSec=` in the `.timer` if you want a different interval.
+
+1.  Enable and start the systemd timer (this will automatically activate the service on schedule):
     ```bash
-     systemctl enable update-proxmox-hosts.path
-     systemctl start update-proxmox-hosts.path
+     systemctl enable update-proxmox-hosts.timer
+     systemctl start update-proxmox-hosts.timer
     ```
 
-2.  Verify the path unit is active:
+2.  Verify the timer is active and see when it will next run:
     ```bash
-    systemctl status update-proxmox-hosts.path
+    systemctl status update-proxmox-hosts.timer
+    systemctl list-timers update-proxmox-hosts.timer
     ```
     You can also check when the service last ran:
     ```bash
@@ -247,7 +250,7 @@ This provides purely time-based checks. It can be used alongside systemd or as a
 # Check and update every 15 minutes
 (crontab -l 2>/dev/null; echo "*/15 * * * * /usr/local/bin/update-proxmox-hosts.sh >> /var/log/update-hosts.log 2>&1") |  crontab -u root -
 ```
-*(Note: Using cron adds periodic checks but might be redundant if the systemd `.path` unit reliably triggers updates.)*
+*(Note: Using cron adds periodic checks but is redundant if you have already enabled the systemd `.timer` unit, which performs the same periodic check.)*
 
 ## Troubleshooting
 

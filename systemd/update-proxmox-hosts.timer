@@ -1,0 +1,14 @@
+[Unit]
+Description=Periodically update /etc/hosts with current IP for Proxmox
+
+[Timer]
+# Run shortly after boot, then on a fixed interval. A timer is used instead of a
+# .path unit because systemd path units rely on inotify, and sysfs attributes
+# such as /sys/class/net/vmbr0/carrier do not emit reliable inotify events, so a
+# PathChanged= watch on them never fires.
+OnBootSec=1min
+OnUnitActiveSec=5min
+Unit=update-proxmox-hosts.service
+
+[Install]
+WantedBy=timers.target

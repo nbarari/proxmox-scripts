@@ -6,5 +6,5 @@ After=network.target
 Type=oneshot
 ExecStart=/usr/local/bin/update-proxmox-hosts.sh
 
-[Install]
-WantedBy=multi-user.target
+# No [Install] section: this oneshot service is triggered by
+# update-proxmox-hosts.timer rather than enabled on its own.

@@ -1,0 +1,21 @@
+#!/bin/sh
+# ===============================================================================
+# ifupdown hook: trigger the Proxmox hosts updater when vmbr0 comes up
+# ===============================================================================
+# Install to: /etc/network/if-up.d/update-proxmox-hosts  (must be executable)
+#
+# ifupdown / ifupdown2 run every script in /etc/network/if-up.d/ after an
+# interface is brought up, exporting $IFACE (the interface name). This fires on
+# boot and on `ifreload -a`, giving event-driven hosts updates without polling.
+# GitHub: https://github.com/nbarari/proxmox-scripts
+# ===============================================================================
+
+# Only act on the management bridge; exit 0 for every other interface so we
+# never make ifup consider the bring-up failed.
+[ "$IFACE" = "vmbr0" ] || exit 0
+
+# A hosts-update failure must not propagate to ifup (it would mark networking as
+# failed), so swallow a non-zero exit from the updater here.
+/usr/local/bin/update-proxmox-hosts.sh >> /var/log/update-hosts.log 2>&1 || true
+
+exit 0

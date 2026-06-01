@@ -1,0 +1,31 @@
+#!/bin/sh
+# ===============================================================================
+# dhclient exit hook: update the Proxmox hosts file on DHCP lease changes
+# ===============================================================================
+# Install to: /etc/dhcp/dhclient-exit-hooks.d/update-proxmox-hosts
+#
+# dhclient *sources* every file in this directory after each DHCP transaction,
+# exporting $interface and $reason. This catches mid-lease IP changes (a RENEW
+# or REBIND that hands out a different address) that an if-up.d hook would miss,
+# because the interface is never taken down for those events.
+#
+# NOTE: this file is sourced, not executed, so it must use `return` (not `exit`)
+# to avoid aborting dhclient's remaining hook processing.
+# GitHub: https://github.com/nbarari/proxmox-scripts
+# ===============================================================================
+
+# $interface and $reason are exported by dhclient into the sourced hook.
+# shellcheck disable=SC2154
+# Only act on the management bridge.
+[ "$interface" = "vmbr0" ] || return 0
+
+# Run the updater on events where a (possibly new) lease has been applied. The
+# updater is idempotent: it only rewrites /etc/hosts and restarts services when
+# the IP actually changed.
+case "$reason" in
+    BOUND|RENEW|REBIND|REBOOT)
+        /usr/local/bin/update-proxmox-hosts.sh >> /var/log/update-hosts.log 2>&1 || true
+        ;;
+esac
+
+return 0

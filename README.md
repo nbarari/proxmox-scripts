@@ -17,8 +17,9 @@ A collection of scripts to configure and maintain Proxmox VE hosts using DHCP ne
 *   [Usage](#usage)
     *   [First-Time DHCP Configuration](#first-time-dhcp-configuration)
     *   [Setting Up Automatic Hosts File Updates](#setting-up-automatic-hosts-file-updates)
-        *   [Method 1: Systemd (Recommended)](#method-1-systemd-recommended)
-        *   [Method 2: Cron (Alternative/Supplemental)](#method-2-cron-alternativesupplemental)
+        *   [Method 1: ifupdown and dhclient Hooks (Recommended)](#method-1-ifupdown-and-dhclient-hooks-recommended)
+        *   [Method 2: Systemd Timer (Periodic Safety Net)](#method-2-systemd-timer-periodic-safety-net)
+        *   [Method 3: Cron (Alternative)](#method-3-cron-alternative)
 *   [Troubleshooting](#troubleshooting)
 
 ---
@@ -153,9 +154,15 @@ cd proxmox-scripts
  cp systemd/update-proxmox-hosts.service /etc/systemd/system/
  cp systemd/update-proxmox-hosts.timer /etc/systemd/system/
 
-# Make scripts executable
+# Event-driven hooks (recommended — see "Setting Up Automatic Hosts File Updates")
+ cp hooks/if-up.d/update-proxmox-hosts /etc/network/if-up.d/
+ cp hooks/dhclient-exit-hooks.d/update-proxmox-hosts /etc/dhcp/dhclient-exit-hooks.d/
+
+# Make scripts and hooks executable
  chmod +x /usr/local/bin/configure-proxmox-dhcp.sh
  chmod +x /usr/local/bin/update-proxmox-hosts.sh
+ chmod +x /etc/network/if-up.d/update-proxmox-hosts
+ chmod +x /etc/dhcp/dhclient-exit-hooks.d/update-proxmox-hosts
 
 # Reload systemd daemon
  systemctl daemon-reload
@@ -175,6 +182,12 @@ cd proxmox-scripts
 # Download systemd service files (adjust URLs if needed)
  wget -O /etc/systemd/system/update-proxmox-hosts.service https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.service
  wget -O /etc/systemd/system/update-proxmox-hosts.timer https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/systemd/update-proxmox-hosts.timer
+
+# Download the event-driven hooks (recommended)
+ wget -O /etc/network/if-up.d/update-proxmox-hosts https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/hooks/if-up.d/update-proxmox-hosts
+ wget -O /etc/dhcp/dhclient-exit-hooks.d/update-proxmox-hosts https://raw.githubusercontent.com/nbarari/proxmox-scripts/main/hooks/dhclient-exit-hooks.d/update-proxmox-hosts
+ chmod +x /etc/network/if-up.d/update-proxmox-hosts
+ chmod +x /etc/dhcp/dhclient-exit-hooks.d/update-proxmox-hosts
 
 # Reload systemd daemon
  systemctl daemon-reload
@@ -215,11 +228,34 @@ cd proxmox-scripts
 
 ### Setting Up Automatic Hosts File Updates
 
-To keep `/etc/hosts` synchronized automatically when the IP changes, use the provided systemd units or set up cron jobs. Systemd is generally recommended.
+To keep `/etc/hosts` synchronized automatically when the IP changes, use the event-driven ifupdown/dhclient hooks (recommended), the systemd timer as a periodic safety net, or cron. The hooks and the timer can safely be enabled together — the updater is idempotent and only rewrites `/etc/hosts` (and restarts Proxmox services) when the IP actually changes.
 
-#### Method 1: Systemd (Recommended)
+#### Method 1: ifupdown and dhclient Hooks (Recommended)
 
-The `.timer` unit runs shortly after boot and then on a fixed interval (every 5 minutes by default), and the `.service` unit runs the `update-proxmox-hosts.sh` script when triggered.
+These run the updater the moment the address changes, with no polling delay:
+
+*   `/etc/network/if-up.d/update-proxmox-hosts` runs when `vmbr0` is brought up (boot, `ifreload -a`).
+*   `/etc/dhcp/dhclient-exit-hooks.d/update-proxmox-hosts` runs on every DHCP `BOUND`/`RENEW`/`REBIND`/`REBOOT`, catching a mid-lease IP change that the if-up.d hook alone would miss.
+
+Both hooks only act on `vmbr0` and never propagate a failure back to the network bring-up. After copying them (see [Installation](#installation)), confirm they are executable:
+
+```bash
+ls -l /etc/network/if-up.d/update-proxmox-hosts
+ls -l /etc/dhcp/dhclient-exit-hooks.d/update-proxmox-hosts
+# Both should be executable; if not: chmod +x <path>
+```
+
+Test the underlying updater manually, then trigger a real event:
+
+```bash
+/usr/local/bin/update-proxmox-hosts.sh   # one-off run
+ifreload -a                              # fires the if-up.d hook
+tail /var/log/update-hosts.log           # check what the hooks logged
+```
+
+#### Method 2: Systemd Timer (Periodic Safety Net)
+
+The `.timer` unit runs shortly after boot and then on a fixed interval (every 5 minutes by default), and the `.service` unit runs `update-proxmox-hosts.sh` when triggered. This catches anything the event hooks might miss (e.g. if a hook is not installed).
 
 > **Note:** A timer is used rather than a `.path` unit. systemd path units rely on inotify, and sysfs attributes such as `/sys/class/net/vmbr0/carrier` do not emit reliable inotify events, so a `PathChanged=` watch on them never fires. Adjust `OnUnitActiveSec=` in the `.timer` if you want a different interval.
 
@@ -239,9 +275,9 @@ The `.timer` unit runs shortly after boot and then on a fixed interval (every 5 
     systemctl status update-proxmox-hosts.service
     ```
 
-#### Method 2: Cron (Alternative/Supplemental)
+#### Method 3: Cron (Alternative)
 
-This provides purely time-based checks. It can be used alongside systemd or as an alternative if systemd units are not preferred.
+This provides purely time-based checks. It can be used as an alternative if the systemd units and hooks are not preferred.
 
 ```bash
 # Check and update on reboot
@@ -250,7 +286,7 @@ This provides purely time-based checks. It can be used alongside systemd or as a
 # Check and update every 15 minutes
 (crontab -l 2>/dev/null; echo "*/15 * * * * /usr/local/bin/update-proxmox-hosts.sh >> /var/log/update-hosts.log 2>&1") |  crontab -u root -
 ```
-*(Note: Using cron adds periodic checks but is redundant if you have already enabled the systemd `.timer` unit, which performs the same periodic check.)*
+*(Note: cron is redundant if you have already enabled the event hooks or the systemd `.timer`.)*
 
 ## Troubleshooting
 
